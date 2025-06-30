@@ -103,5 +103,4 @@ Note: the `show-diff` is using [`delta`](https://github.com/dandavison/delta) as
 ## Limitations
 
 - Only works with GitHub remotes.
-- Only supports "approve" reviews.
 - Assumes `origin` is your GitHub remote.
