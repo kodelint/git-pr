@@ -98,6 +98,14 @@ README.md
 ## First PR to test
 ```
 
+#### Tried to review my own PR 😉
+
+```bash
+> git pr submit-review --message "Looks good to me" 1
+📝 Submitting review for PR #1...
+❌ Failed to submit review: Unprocessable Entity: Can not approve your own pull request
+```
+
 Note: the `show-diff` is using [`delta`](https://github.com/dandavison/delta) as git's default diff viewer
 
 ## Limitations
