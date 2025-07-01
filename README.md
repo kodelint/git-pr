@@ -1,3 +1,9 @@
+[![CI](https://github.com/kodelint/git-pr/actions/workflows/release.yml/badge.svg)](https://github.com/kodelint/git-pr/actions/workflows/release.yml)
+[![GitHub release](https://img.shields.io/github/release/kodelint/git-pr.svg)](https://github.com/kodelint/git-pr/releases)
+[![GitHub stars](https://img.shields.io/github/stars/kodelint/git-pr.svg)](https://github.com/kodelint/git-pr/stargazers)
+[![Last commit](https://img.shields.io/github/last-commit/kodelint/git-pr.svg)](https://github.com/kodelint/git-pr/commits/main)
+[![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](https://github.com/kodelint/git-pr/pulls)
+
 # git-pr 🧩
 
 > A Git CLI extension to streamline your workflow with GitHub Pull Requests — view, pull, diff, and review PRs right
