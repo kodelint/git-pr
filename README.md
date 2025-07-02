@@ -155,6 +155,14 @@ README.md
 ❌ Failed to submit review: Unprocessable Entity: Can not approve your own pull request
 ```
 
+#### Approving PR (not my own 😉)
+
+```bash
+> git pr submit-review 2 -m "Looks good to me"
+📝 Submitting review for PR #2...
+✅ Review submitted successfully for PR #2
+```
+
 Note: the `show-diff` is using [`delta`](https://github.com/dandavison/delta) as git's default diff viewer
 
 ## Limitations
