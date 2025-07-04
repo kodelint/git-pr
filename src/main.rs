@@ -2,16 +2,14 @@
 use clap::{Parser, Subcommand};
 // For colorful terminal output (errors, info, etc.)
 use colored::*;
-// To run shell commands like `git fetch` or `git diff`
-use std::process::Command;
 
 // Bring in custom provider logic (like GitHub)
-mod providers {
-    pub mod factory;
-    pub mod github;
-}
+mod providers;
+// Module for General Utility functions
+mod utils;
 
 use providers::factory::get_provider;
+use providers::github::{get_remote_url, pull_pr, show_diff};
 
 /// CLI definition using Clap's derive macros.
 ///
@@ -31,15 +29,9 @@ struct Cli {
 #[derive(Subcommand)]
 enum Commands {
     /// Pull and checkout a PR branch locally
-    Pull {
-        /// Pull Request number (e.g., 42)
-        pr_number: String,
-    },
+    Pull { pr_number: String },
     /// Show the diff of a PR compared to main
-    ShowDiff {
-        /// Pull Request number (e.g., 42)
-        pr_number: String,
-    },
+    ShowDiff { pr_number: String },
     /// Submit an approval review for a PR
     SubmitReview {
         /// Pull Request number (e.g., 42)
@@ -48,6 +40,15 @@ enum Commands {
         /// Optional review message (defaults to LGTM)
         #[arg(short, long, default_value = "Looks good to me.")]
         message: String,
+        /// Action on the pull request: Approve or Reject
+        #[arg(long, conflicts_with_all=&["reject", "comment_only"])]
+        approve: bool,
+        /// Action on the pull request: Approve or Reject
+        #[arg(long, conflicts_with_all=&["approve", "comment_only"])]
+        reject: bool,
+        /// Action on the pull request: Approve or Reject
+        #[arg(long, conflicts_with_all=&["approve", "reject"])]
+        comment_only: bool,
     },
     /// List all currently open pull requests for the repository
     List,
@@ -58,6 +59,8 @@ fn main() {
     let cli = Cli::parse();
 
     // Try to retrieve the Git remote origin URL for the repo
+    // This is hard requirement that the Git repository has ORIGIN set
+    // with remote URL
     let remote_url = match get_remote_url() {
         Some(url) => url,
         None => {
@@ -67,6 +70,7 @@ fn main() {
     };
 
     // Get the appropriate SourceControlProvider (currently GitHub only)
+    // In future we can support other Source Control endpoints
     let provider = match get_provider(&remote_url) {
         Ok(p) => p,
         Err(e) => {
@@ -76,22 +80,24 @@ fn main() {
     };
 
     // Dispatch based on which subcommand was used
+    // For any of these commands to work
+    // GITHUB_TOKEN variable needs to be set
     match cli.command {
-        // Show a list of open PRs
+        // Show a list of open PRs using ORIGIN URL
         Commands::List => {
             if let Err(e) = provider.list_pull_requests() {
                 eprintln!("{} {}", "❌ Error listing PRs:".red(), e);
                 std::process::exit(1);
             }
         }
-
-        // Fetch and checkout a specific PR by number
+        // Fetch and checkout to a branch for a specific PR by number
         Commands::Pull { pr_number } => {
             println!("{}", format!("📥 Pulling PR #{}...", pr_number).green());
             pull_pr(&pr_number);
         }
-
         // Show the diff of a PR vs main
+        // keep in mind that show-diff to work
+        // present checked out branch should be the one with PR changes
         Commands::ShowDiff { pr_number } => {
             println!(
                 "{}",
@@ -99,81 +105,71 @@ fn main() {
             );
             show_diff(&pr_number);
         }
+        // Submit a code review for the PR
+        // This is the little complicated one
+        // Presently it supports following:
+        ///////////////////////////////////////////////////////////////////////
+        // Action: Approve
+        // i.e. `git pr submit-review 4 -m "Looks good to me" --approve`
+        //
+        // Action: Reject and close the PR
+        // i.e. `git pr submit-review 4 -m "Looks good to me" --reject`
+        //
+        // Action: Approve but comment only
+        // i.e. `git pr submit-review 4 -m "Looks good to me" --comment-only`
+        ///////////////////////////////////////////////////////////////////////
+        Commands::SubmitReview {
+            pr_number,
+            message,
+            approve,
+            reject,
+            comment_only,
+        } => {
+            if approve {
+                println!(
+                    "📝 Submitting APPROVAL review for PR #{}...",
+                    pr_number.green()
+                );
+                if let Err(e) = provider.submit_review(&pr_number, &message, "APPROVE") {
+                    eprintln!("{} {}", "❌ Error submitting review:".red(), e);
+                    std::process::exit(1);
+                }
+            } else if reject {
+                println!(
+                    "📝 Submitting REQUEST_CHANGES review and closing PR #{}...",
+                    pr_number.red()
+                );
 
-        // Submit a code review for the PR (currently approves only)
-        Commands::SubmitReview { pr_number, message } => {
-            println!(
-                "{}",
-                format!("📝 Submitting review for PR #{}...", pr_number).green()
-            );
-            if let Err(e) = provider.submit_review(&pr_number, &message) {
-                eprintln!("{} {}", "❌ Error submitting review:".red(), e);
-                std::process::exit(1);
+                if let Err(e) = provider.submit_review(&pr_number, &message, "REQUEST_CHANGES") {
+                    eprintln!("{} {}", "❌ Error submitting review:".red(), e);
+                    std::process::exit(1);
+                }
+
+                if let Err(e) = provider.close_pull_request(&pr_number) {
+                    eprintln!("{} {}", "❌ Failed to close PR:".red(), e);
+                    std::process::exit(1);
+                }
+
+                println!("✅ PR #{} successfully closed.", pr_number.green());
+            } else if comment_only {
+                println!(
+                    "📝 Submitting COMMENT only review for PR #{}...",
+                    pr_number.yellow()
+                );
+                if let Err(e) = provider.submit_review(&pr_number, &message, "COMMENT") {
+                    eprintln!("{} {}", "❌ Error submitting review:".red(), e);
+                    std::process::exit(1);
+                }
+            } else {
+                println!(
+                    "📝 No review flag specified, defaulting to APPROVE for PR #{}...",
+                    pr_number.green()
+                );
+                if let Err(e) = provider.submit_review(&pr_number, &message, "APPROVE") {
+                    eprintln!("{} {}", "❌ Error submitting review:".red(), e);
+                    std::process::exit(1);
+                }
             }
         }
-    }
-}
-
-/// Attempts to fetch the GitHub remote URL for the `origin` remote.
-///
-/// This will usually return something like:
-/// - https://github.com/user/repo.git
-/// - git@github.com:user/repo.git
-fn get_remote_url() -> Option<String> {
-    let output = Command::new("git")
-        .args(["remote", "get-url", "origin"])
-        .output()
-        .expect("Failed to get remote URL");
-
-    if output.status.success() {
-        Some(String::from_utf8_lossy(&output.stdout).trim().to_string())
-    } else {
-        None
-    }
-}
-
-/// Pulls a PR from the remote and checks out a local tracking branch.
-///
-/// Uses the format `pull/{pr_number}/head:pr-request-{pr_number}`
-/// to create a local branch for inspection or testing.
-fn pull_pr(pr_number: &str) {
-    let fetch_ref = format!("pull/{}/head:pr-request-{}", pr_number, pr_number);
-
-    let fetch = Command::new("git")
-        .args(["fetch", "origin", &fetch_ref])
-        .status()
-        .expect("Failed to fetch PR");
-
-    if fetch.success() {
-        let checkout = Command::new("git")
-            .args(["checkout", &format!("pr-request-{}", pr_number)])
-            .status()
-            .expect("Failed to checkout PR branch");
-
-        if checkout.success() {
-            println!(
-                "{}",
-                format!("✅ Switched to branch pr-request-{}", pr_number).green()
-            );
-        } else {
-            eprintln!("{}", "❌ Failed to checkout PR branch.".red());
-        }
-    } else {
-        eprintln!("{}", "❌ Failed to fetch PR.".red());
-    }
-}
-
-/// Displays a diff of the PR branch vs `origin/main`.
-///
-/// Assumes the PR has already been fetched and checked out via `pull_pr()`.
-fn show_diff(pr_number: &str) {
-    let branch = format!("pr-request-{}", pr_number);
-    let diff = Command::new("git")
-        .args(["diff", &format!("origin/main...{}", branch)])
-        .status()
-        .expect("Failed to show diff");
-
-    if !diff.success() {
-        eprintln!("{}", "❌ Failed to display diff.".red());
     }
 }
