@@ -55,12 +55,14 @@
 
 ✨ Features
 
-- 📋 List open pull requests in the current repository (in tabular format)
-- 📥 Pull a PR into a local branch
-- 🔍 Show diffs between PR and main
-- 📊 Display full PR details with commits and changed files
-- 📝 Submit a review with approval, comment-only, or rejection
-- 🐞 Debug mode for verbose API logging
+- 📋 List open PRs in your current GitHub repo
+- 📥 Pull PR branches into local Git
+- 🔍 Show Git diffs between PR branch and main
+- 📊 Inspect PR metadata: title, status, author, commits, files
+- 📝 Submit reviews: `--approve`, `--comment-only`, or `--reject`
+- ❌ Close PRs directly from terminal (when rejected)
+- 🐞 `DEBUG=1` support for verbose output & GitHub API traces
+- ⚙️ Works with both same-repo and forked PRs
 
 ## Installation
 
@@ -163,6 +165,15 @@ Switched to branch 'pr-request-1'
 ✅ Switched to branch pr-request-1
 ```
 
+> Philosophy of pushing improvements or update the pull-request is simple:
+> - The PR is to same Repo
+    >
+- The branch will be fetched, checked out and contributors with write access can push changes directly to the PR branch.
+> - The PR is from a forked Repo
+    >
+- The PR is checked out locally as a new branch named `<fork-owner>-pr-<number>`, which cannot be pushed back to the
+  fork. If needed, changes can be committed and pushed to a new branch in the original repo, continuing the work.
+
 #### Show the Diff
 
 ```bash
@@ -182,17 +193,27 @@ README.md
 #### Tried to review my own PR 😉
 
 ```bash
-> git pr submit-review --message "Looks good to me" 1
+> git pr submit-review --message "Looks good to me" 1 --approve
 📝 Submitting review for PR #1...
 ❌ Failed to submit review: Unprocessable Entity: Can not approve your own pull request
 ```
 
-#### Approving PR (not my own 😉)
+#### Approving/Rejecting/Commenting PR (not my own 😉)
 
 ```bash
-> git pr submit-review 2 -m "Looks good to me"
-📝 Submitting review for PR #2...
-✅ Review submitted successfully for PR #2
+> git pr submit-review 42 -m "Looks good!" --approve
+📝 Submitting review for PR #42...
+✅ Review submitted successfully for PR #42
+
+> git pr submit-review 45 --message "Just Commenting" --comment-only
+📝 Submitting COMMENT only review for PR #45...
+✅ Review submitted successfully for PR #45
+
+> git pr submit-review 46 --message "needs work" --reject
+📝 Submitting REQUEST_CHANGES review and closing PR #46...
+✅ Review submitted successfully for PR #46
+✅ Successfully closed PR #46
+✅ PR #46 successfully closed.
 ```
 
 Note: the `show-diff` is using [`delta`](https://github.com/dandavison/delta) as git's default diff viewer

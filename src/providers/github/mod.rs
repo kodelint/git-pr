@@ -13,15 +13,3 @@ pub(crate) mod methods;
 // This module likely contains data structures, such as API response models, domain models, and data transfer objects (DTOs).
 // Making it public means these models can be used throughout the crate and by external users if the crate is published.
 pub mod models;
-
-// Re-export selected items from the `github` module at this level.
-// This makes `get_remote_url`, `pull_pr`, and `show_diff` available directly from this module,
-// allowing users to call these functions without explicitly referencing `github::`.
-// This technique improves ergonomics and provides a curated public API.
-//
-// For example:
-// Instead of `crate::providers::github::get_remote_url()`,
-// users can simply write `crate::providers::get_remote_url()`
-//
-// This helps organize code so the internal module structure can change without affecting external users.
-pub use self::github::{get_remote_url, pull_pr, show_diff};

@@ -8,7 +8,6 @@ mod providers;
 // Module for General Utility functions
 mod utils;
 use providers::get_provider;
-use providers::github::{get_remote_url, pull_pr, show_diff};
 
 /// CLI definition using Clap's derive macros.
 ///
@@ -28,19 +27,14 @@ struct Cli {
 #[derive(Subcommand)]
 enum Commands {
     /// Pull and checkout a PR branch locally
-    Pull {
-        pr_number: String,
-    },
+    Pull { pr_number: String },
 
-    // Show details for particular PR, takes PR Number as argument
-    ShowDetails {
-        pr_number: String,
-    },
+    /// Show details for particular PR
+    ShowDetails { pr_number: String },
 
     /// Show the diff of a PR compared to main
-    ShowDiff {
-        pr_number: String,
-    },
+    ShowDiff { pr_number: String },
+
     /// Submit an approval review for a PR
     SubmitReview {
         /// Pull Request number (e.g., 42)
@@ -49,13 +43,16 @@ enum Commands {
         /// Optional review message (defaults to LGTM)
         #[arg(short, long, default_value = "Looks good to me.")]
         message: String,
-        /// Action on the pull request: Approve or Reject
+
+        /// Action on the pull request: Approves
         #[arg(long, conflicts_with_all=&["reject", "comment_only"])]
         approve: bool,
-        /// Action on the pull request: Approve or Reject
+
+        /// Action on the pull request: Rejects
         #[arg(long, conflicts_with_all=&["approve", "comment_only"])]
         reject: bool,
-        /// Action on the pull request: Approve or Reject
+
+        /// Action on the pull request: Comments Only
         #[arg(long, conflicts_with_all=&["approve", "reject"])]
         comment_only: bool,
     },
@@ -70,16 +67,17 @@ fn main() {
     // Try to retrieve the Git remote origin URL for the repo
     // This is hard requirement that the Git repository has ORIGIN set
     // with remote URL
-    let remote_url = match get_remote_url() {
+    let remote_url = match utils::get_remote_url() {
         Some(url) => url,
         None => {
+            // Exit early if we can’t determine the remote. Git repo may be misconfigured.
             eprintln!("{}", "❌ Could not determine remote origin URL.".red());
             std::process::exit(1);
         }
     };
 
-    // Get the appropriate SourceControlProvider (currently GitHub only)
-    // In future we can support other Source Control endpoints
+    // Choose the right `SourceControlProvider` implementation based on the remote.
+    // Currently only GitHub is supported, but extensible for GitLab/Bitbucket later.
     let provider = match get_provider(&remote_url) {
         Ok(p) => p,
         Err(e) => {
@@ -110,7 +108,7 @@ fn main() {
         // Fetch and checkout to a branch for a specific PR by number
         Commands::Pull { pr_number } => {
             println!("{}", format!("📥 Pulling PR #{}...", pr_number).green());
-            pull_pr(&pr_number);
+            provider.pull_pr(&pr_number);
         }
         // Show the diff of a PR vs main
         // keep in mind that show-diff to work
@@ -120,7 +118,7 @@ fn main() {
                 "{}",
                 format!("🔍 Showing diff for PR #{}...", pr_number).green()
             );
-            show_diff(&pr_number);
+            provider.show_diff(&pr_number);
         }
         // Submit a code review for the PR
         // This is the little complicated one
@@ -130,7 +128,7 @@ fn main() {
         // i.e. `git pr submit-review 4 -m "Looks good to me" --approve`
         //
         // Action: Reject and close the PR
-        // i.e. `git pr submit-review 4 -m "Looks good to me" --reject`
+        // i.e. `git pr submit-review 4 -m "Not Good" --reject`
         //
         // Action: Approve but comment only
         // i.e. `git pr submit-review 4 -m "Looks good to me" --comment-only`
