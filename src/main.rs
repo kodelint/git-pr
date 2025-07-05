@@ -7,8 +7,7 @@ use colored::*;
 mod providers;
 // Module for General Utility functions
 mod utils;
-
-use providers::factory::get_provider;
+use providers::get_provider;
 use providers::github::{get_remote_url, pull_pr, show_diff};
 
 /// CLI definition using Clap's derive macros.
@@ -29,9 +28,19 @@ struct Cli {
 #[derive(Subcommand)]
 enum Commands {
     /// Pull and checkout a PR branch locally
-    Pull { pr_number: String },
+    Pull {
+        pr_number: String,
+    },
+
+    // Show details for particular PR, takes PR Number as argument
+    ShowDetails {
+        pr_number: String,
+    },
+
     /// Show the diff of a PR compared to main
-    ShowDiff { pr_number: String },
+    ShowDiff {
+        pr_number: String,
+    },
     /// Submit an approval review for a PR
     SubmitReview {
         /// Pull Request number (e.g., 42)
@@ -90,6 +99,14 @@ fn main() {
                 std::process::exit(1);
             }
         }
+        // Fetch PR details for a given PR Number
+        Commands::ShowDetails { pr_number } => {
+            if let Err(e) = provider.show_pull_request_details(&pr_number) {
+                eprintln!("{} {}", "❌ Error showing PR details:".red(), e);
+                std::process::exit(1);
+            }
+        }
+
         // Fetch and checkout to a branch for a specific PR by number
         Commands::Pull { pr_number } => {
             println!("{}", format!("📥 Pulling PR #{}...", pr_number).green());
