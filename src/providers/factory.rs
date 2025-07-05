@@ -22,18 +22,15 @@ use std::error::Error;
 /// ```
 /// let provider = get_provider("https://github.com/owner/repo.git")?;
 /// provider.list_pull_requests()?;
-/// ```
+/// ``
 pub fn get_provider(remote_url: &str) -> Result<Box<dyn SourceControlProvider>, Box<dyn Error>> {
     // Currently, only GitHub is supported.
     // Check if the URL contains "github.com" as a simple heuristic.
     if remote_url.contains("github.com") {
-        // Create and initialize the GitHub provider.
-        let provider = GitHubProvider::new(remote_url.to_string())?;
-
         // Return it as a boxed trait object so it can be used generically.
-        Ok(Box::new(provider))
+        Ok(Box::new(GitHubProvider::new(remote_url.to_string())?))
     } else {
         // Return an error for any unsupported remote host.
-        Err("Unsupported remote host (only GitHub supported for now)".into())
+        Err("Unsupported provider".into())
     }
 }
