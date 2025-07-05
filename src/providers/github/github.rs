@@ -1,81 +1,23 @@
-use super::provider::SourceControlProvider;
+use crate::debug_log;
+use crate::providers::github::methods::*;
+use crate::providers::github::models::*;
 use crate::utils::is_debug_enabled;
 use chrono::{DateTime, Utc};
 use colored::Colorize;
 use owo_colors::OwoColorize;
 use reqwest::blocking::Client;
-use serde::Deserialize;
 use serde_json::json;
 use std::env;
 use std::error::Error;
 use std::process::Command;
-use tabled::{settings::Style, Table, Tabled};
+use tabled::{settings::Style, Table};
 use textwrap::{fill, Options};
 
-/// A GitHub-specific implementation of the SourceControlProvider trait.
-/// This struct holds state like the remote repo URL, an HTTP client, and the GitHub token.
-pub struct GitHubProvider {
-    pub remote_url: String,
-    pub client: Client,
-    pub token: String,
-}
-
-/// Deserialization struct for GitHub PR API response
-///
-#[derive(Deserialize)]
-struct GitHubPR {
-    number: u32,
-    title: String,
-    user: GitHubUser,
-    created_at: DateTime<Utc>,
-    body: Option<String>,
-    labels: Vec<Label>,
-    commits: u32,
-    changed_files: u32,
-}
-
-#[allow(dead_code)]
-#[derive(Deserialize)]
-struct BasicGitHubPR {
-    number: u32,
-    title: String,
-    user: GitHubUser,
-    created_at: DateTime<Utc>,
-}
-
-#[derive(Deserialize)]
-struct GitHubUser {
-    login: String,
-}
-
-#[derive(Deserialize)]
-struct Label {
-    name: String,
-}
-
-#[derive(Tabled)]
-struct DisplayPR {
-    #[tabled(rename = "Number")]
-    number: String,
-    #[tabled(rename = "Title")]
-    title: String,
-    #[tabled(rename = "Author")]
-    author: String,
-    #[tabled(rename = "Age")]
-    age: String,
-    #[tabled(rename = "Total Commits")]
-    commits: String,
-    #[tabled(rename = "Number of Changed Files")]
-    files: String,
-    #[tabled(rename = "Labels")]
-    labels: String,
-    #[tabled(rename = "Description")]
-    description: String,
-}
 impl GitHubProvider {
     /// Creates a new GitHubProvider instance by reading the GitHub token from the environment.
     /// The token must be set in `GITHUB_TOKEN` for authentication with the GitHub API.
     pub fn new(remote_url: String) -> Result<Self, Box<dyn Error>> {
+        debug_log!("[DEBUG] Creating GitHubProvider instance");
         let token = env::var("GITHUB_TOKEN")?;
         Ok(GitHubProvider {
             remote_url,
@@ -87,6 +29,7 @@ impl GitHubProvider {
     /// Extracts the GitHub `owner` and `repo` name from the remote URL.
     /// Handles both HTTPS and SSH GitHub URLs.
     fn infer_repo_details(&self) -> Option<(String, String)> {
+        debug_log!("[DEBUG] Inferring repo details from remote URL");
         let url = self.remote_url.trim_end_matches(".git");
 
         if url.contains("github.com") {
@@ -96,6 +39,8 @@ impl GitHubProvider {
                 url.split(':').last()?.split('/').collect()
             };
 
+            debug_log!("[DEBUG] Split URL parts: {:?}", parts);
+
             if parts.len() >= 2 {
                 return Some((
                     parts[parts.len() - 2].to_string(),
@@ -103,7 +48,7 @@ impl GitHubProvider {
                 ));
             }
         }
-
+        debug_log!("[DEBUG] Failed to infer repo details");
         None
     }
 }
@@ -121,6 +66,7 @@ impl SourceControlProvider for GitHubProvider {
         message: &str,
         event: &str,
     ) -> Result<(), Box<dyn Error>> {
+        debug_log!("[DEBUG] Submitting review for PR #{}", pr_number);
         // Parse owner/repo from the remote URL
         let (owner, repo) = self
             .infer_repo_details()
@@ -131,9 +77,7 @@ impl SourceControlProvider for GitHubProvider {
             owner, repo, pr_number
         );
 
-        if is_debug_enabled() {
-            eprintln!("🔍 [DEBUG] Fetching PR for commit_id from: {}", pr_url);
-        }
+        debug_log!("[DEBUG] Fetching PR for commit_id from: {}", pr_url);
 
         let pr_response = self
             .client
@@ -148,9 +92,7 @@ impl SourceControlProvider for GitHubProvider {
             .as_str()
             .ok_or("Could not extract commit_id")?;
 
-        if is_debug_enabled() {
-            eprintln!("🧪 [DEBUG] commit_id for PR #{}: {}", pr_number, commit_id);
-        }
+        debug_log!("[DEBUG] commit_id for PR #{}: {}", pr_number, commit_id);
 
         let review_url = format!(
             "https://api.github.com/repos/{}/{}/pulls/{}/reviews",
@@ -163,10 +105,8 @@ impl SourceControlProvider for GitHubProvider {
             "commit_id": commit_id
         });
 
-        if is_debug_enabled() {
-            eprintln!("🚀 [DEBUG] Submitting review to: {}", review_url);
-            eprintln!("📦 [DEBUG] Payload: {}", body);
-        }
+        debug_log!("[DEBUG] Submitting review to: {}", review_url);
+        debug_log!("[DEBUG] Payload: {}", body);
 
         let response = self
             .client
@@ -176,13 +116,7 @@ impl SourceControlProvider for GitHubProvider {
             .json(&body)
             .send()?;
 
-        // let status = response.status();
-        // let text = response.text()?;
-
-        if is_debug_enabled() {
-            eprintln!("📬 [DEBUG] Response status: {}", response.status());
-            // eprintln!("📨 [DEBUG] Response body: {}", text);
-        }
+        debug_log!("[DEBUG] Response status: {}", response.status());
 
         if response.status().is_success() {
             println!("✅ Review submitted successfully for PR #{}", pr_number);
@@ -199,6 +133,7 @@ impl SourceControlProvider for GitHubProvider {
     /// - For each PR, fetches detailed info like commits, labels, etc.
     /// - Displays the data in a well-formatted table using `tabled`
     fn list_pull_requests(&self) -> Result<(), Box<dyn Error>> {
+        debug_log!("[DEBUG] Listing pull requests");
         // Infer owner and repo from git remote. This returns (user, repo_name)
         let (owner, repo) = self
             .infer_repo_details()
@@ -209,6 +144,8 @@ impl SourceControlProvider for GitHubProvider {
             "https://api.github.com/repos/{}/{}/pulls?state=open&per_page=50",
             owner, repo
         );
+
+        debug_log!("[DEBUG] Fetching PRs from URL: {}", url);
 
         // Make the HTTP GET request to fetch the list of PRs
         let resp = self
@@ -223,10 +160,8 @@ impl SourceControlProvider for GitHubProvider {
         let text = resp.text()?;
 
         // If DEBUG is enabled, print status and body for inspection
-        if is_debug_enabled() {
-            eprintln!("📬 [DEBUG] Response status: {}", status);
-            eprintln!("📨 [DEBUG] Response body: {}", text);
-        }
+        debug_log!("[DEBUG] Response status: {}", status);
+        debug_log!("[DEBUG] Response body: {}", text);
 
         // If GitHub returned a non-200 response, treat as an error
         if !status.is_success() {
@@ -243,11 +178,16 @@ impl SourceControlProvider for GitHubProvider {
             return Ok(());
         }
 
+        debug_log!("[DEBUG] {} PRs found", basic_prs.len());
+
         // We'll store (GitHubPR, age_days) so we can sort later
         let mut detailed_prs = Vec::new();
 
         // Loop through each basic PR and fetch its full details
         for basic_pr in basic_prs {
+            // Fetching PR details in DEBUG
+            debug_log!("[DEBUG] Fetching details for PR #{}", basic_pr.number);
+
             let detail_url = format!(
                 "https://api.github.com/repos/{}/{}/pulls/{}",
                 owner, repo, basic_pr.number
@@ -278,13 +218,16 @@ impl SourceControlProvider for GitHubProvider {
             detailed_prs.push((pr, age_days));
         }
 
-        // ✅ Sort PRs by age_days ASCENDING (oldest first). Use `rev()` to make it newest first.
+        // Sort PRs by age_days ASCENDING (oldest first). Use `rev()` to make it newest first.
         detailed_prs.sort_by_key(|(_, age_days)| *age_days);
+
+        debug_log!("[DEBUG] Sorted PRs by age");
 
         // Build table rows after sorting
         let display_rows: Vec<DisplayPR> = detailed_prs
             .into_iter()
             .map(|(pr, age_days)| {
+                debug_log!("[DEBUG] Mapping PR #{} to table row", pr.number);
                 let age = if age_days == 0 {
                     "today".to_string()
                 } else {
@@ -327,6 +270,7 @@ impl SourceControlProvider for GitHubProvider {
     }
 
     fn close_pull_request(&self, pr_number: &str) -> Result<(), Box<dyn Error>> {
+        debug_log!("[DEBUG] Closing PR #{}", pr_number);
         // Extract repo details from the remote URL
         let (owner, repo) = self
             .infer_repo_details()
@@ -339,9 +283,7 @@ impl SourceControlProvider for GitHubProvider {
 
         let body = json!({ "state": "closed" });
 
-        if is_debug_enabled() {
-            eprintln!("📬 [DEBUG] Request Sent: {} to URL: {}", body, url);
-        }
+        debug_log!("📬 [DEBUG] Request Sent: {} to URL: {}", body, url);
 
         let response = self
             .client
@@ -351,13 +293,11 @@ impl SourceControlProvider for GitHubProvider {
             .json(&body)
             .send()?;
 
-        if is_debug_enabled() {
-            eprintln!(
-                "📬 [DEBUG] Response Received: {} from URL: {}",
-                response.status(),
-                url
-            );
-        }
+        debug_log!(
+            "📬 [DEBUG] Response Received: {} from URL: {}",
+            response.status(),
+            url
+        );
 
         if response.status().is_success() {
             println!("✅ Successfully closed PR #{}", pr_number);
@@ -365,6 +305,146 @@ impl SourceControlProvider for GitHubProvider {
         } else {
             Err(format!("Failed to close PR: {}", response.text()?).into())
         }
+    }
+
+    fn show_pull_request_details(&self, pr_number: &str) -> Result<(), Box<dyn std::error::Error>> {
+        debug_log!("[DEBUG] Showing Details for PR #{}", pr_number);
+        let (owner, repo) = self
+            .infer_repo_details()
+            .ok_or("Could not parse owner/repo")?;
+
+        // Fetch PR metadata
+        let pr_url = format!(
+            "https://api.github.com/repos/{}/{}/pulls/{}",
+            owner, repo, pr_number
+        );
+
+        debug_log!("[DEBUG] Fetching PR metadata from: {}", pr_url);
+
+        let pr_resp = self
+            .client
+            .get(&pr_url)
+            .bearer_auth(&self.token)
+            .header("User-Agent", "git-pr")
+            .send()?;
+
+        if !pr_resp.status().is_success() {
+            return Err(format!("Failed to fetch PR details: {}", pr_resp.text()?).into());
+        }
+
+        let pr_json: serde_json::Value = pr_resp.json()?;
+        let title = pr_json["title"].as_str().unwrap_or("-");
+        let status = pr_json["state"].as_str().unwrap_or("-");
+        let user = pr_json["user"]["login"].as_str().unwrap_or("-");
+        let created_at = pr_json["created_at"].as_str().unwrap_or("-");
+        let created_date = DateTime::parse_from_rfc3339(created_at)?.with_timezone(&Utc);
+        let age_days = (Utc::now() - created_date).num_days();
+        let age = if age_days == 0 {
+            "today".to_string()
+        } else {
+            format!("{}d", age_days)
+        };
+
+        debug_log!(
+            "[DEBUG] PR #{}: title={}, status={}, author={}, age={}d",
+            pr_number,
+            title,
+            status,
+            user,
+            age_days
+        );
+
+        // Fetch commits
+        let commits_url = format!(
+            "https://api.github.com/repos/{}/{}/pulls/{}/commits",
+            owner, repo, pr_number
+        );
+        let commits_resp = self
+            .client
+            .get(&commits_url)
+            .bearer_auth(&self.token)
+            .header("User-Agent", "git-pr")
+            .send()?;
+
+        if !commits_resp.status().is_success() {
+            return Err(format!("Failed to fetch commits: {}", commits_resp.text()?).into());
+        }
+
+        let commits: Vec<serde_json::Value> = commits_resp.json()?;
+
+        let mut rows = Vec::new();
+
+        // First row: Full PR metadata, plus first commit + files
+        for (i, commit) in commits.iter().enumerate() {
+            let sha = commit["sha"].as_str().unwrap_or("-");
+            let short_sha = &sha[..7.min(sha.len())];
+
+            // Fetch files for the commit
+            let commit_url = format!(
+                "https://api.github.com/repos/{}/{}/commits/{}",
+                owner, repo, sha
+            );
+
+            debug_log!("[DEBUG] Fetching files for commit {}", short_sha);
+
+            let commit_resp = self
+                .client
+                .get(&commit_url)
+                .bearer_auth(&self.token)
+                .header("User-Agent", "git-pr")
+                .send()?;
+
+            if !commit_resp.status().is_success() {
+                eprintln!(
+                    "⚠️  Failed to fetch commit {}: {}",
+                    sha,
+                    commit_resp.text()?
+                );
+                continue;
+            }
+
+            let commit_json: serde_json::Value = commit_resp.json()?;
+            let files = commit_json["files"]
+                .as_array()
+                .unwrap_or(&vec![])
+                .iter()
+                .filter_map(|f| f["filename"].as_str())
+                .collect::<Vec<_>>()
+                .join(", ");
+
+            let row = PRDetailsRow {
+                pr_number: if i == 0 {
+                    format!("#{}", pr_number)
+                } else {
+                    "".to_string()
+                },
+                title: if i == 0 {
+                    title.to_string()
+                } else {
+                    "".to_string()
+                },
+                status: if i == 0 {
+                    status.to_string()
+                } else {
+                    "".to_string()
+                },
+                age: if i == 0 { age.clone() } else { "".to_string() },
+                github_username: if i == 0 {
+                    user.to_string()
+                } else {
+                    "".to_string()
+                },
+                commit_sha: short_sha.to_string(),
+                changed_files: files,
+            };
+
+            rows.push(row);
+        }
+
+        let mut table = Table::new(rows);
+        table.with(Style::rounded());
+        println!("{table}");
+        Ok(())
     }
 }
 
@@ -378,12 +458,10 @@ pub fn get_remote_url() -> Option<String> {
         .output()
         .expect("Failed to get remote URL");
 
-    if is_debug_enabled() {
-        eprintln!(
-            "📤 [DEBUG] Raw output: {}",
-            String::from_utf8_lossy(&output.stdout)
-        );
-    }
+    debug_log!(
+        "📤 [DEBUG] Raw output: {}",
+        String::from_utf8_lossy(&output.stdout)
+    );
 
     if output.status.success() {
         let url = String::from_utf8_lossy(&output.stdout).trim().to_string();
@@ -409,9 +487,8 @@ pub fn get_remote_url() -> Option<String> {
 ///
 pub fn pull_pr(pr_number: &str) {
     let fetch_ref = format!("pull/{}/head:pr-request-{}", pr_number, pr_number);
-    if is_debug_enabled() {
-        eprintln!("📡 [DEBUG] Fetching ref: {}", fetch_ref);
-    }
+
+    debug_log!("📡 [DEBUG] Fetching ref: {}", fetch_ref);
 
     let fetch = Command::new("git")
         .args(["fetch", "origin", &fetch_ref])
@@ -419,13 +496,10 @@ pub fn pull_pr(pr_number: &str) {
         .expect("Failed to fetch PR");
 
     if fetch.success() {
-        if is_debug_enabled() {
-            eprintln!(
-                "📥 [DEBUG] Fetch succeeded, checking out pr-request-{}",
-                pr_number
-            );
-        }
-
+        debug_log!(
+            "[DEBUG] Fetch succeeded, checking out pr-request-{}",
+            pr_number
+        );
         let checkout = Command::new("git")
             .args(["checkout", &format!("pr-request-{}", pr_number)])
             .status()
@@ -445,21 +519,20 @@ pub fn pull_pr(pr_number: &str) {
 }
 
 /// Displays a diff of the PR branch vs `origin/main`.
-///
 /// Assumes the PR has already been fetched and checked out via `pull_pr()`.
 ///
 pub fn show_diff(pr_number: &str) {
     let branch = format!("pr-request-{}", pr_number);
     let diff_range = format!("origin/main...{}", branch);
 
-    if is_debug_enabled() {
-        eprintln!("🔍 [DEBUG] Running: git diff {}", diff_range);
-    }
+    debug_log!("[DEBUG] Running: git diff {}", diff_range);
 
     let diff = Command::new("git")
         .args(["diff", &diff_range])
         .status()
         .expect("Failed to show diff");
+
+    debug_log!("[DEBUG] Preparing Git Diff {}", diff_range);
 
     if !diff.success() {
         eprintln!("{}", "❌ Failed to display diff.".red());
