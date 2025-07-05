@@ -27,19 +27,14 @@ struct Cli {
 #[derive(Subcommand)]
 enum Commands {
     /// Pull and checkout a PR branch locally
-    Pull {
-        pr_number: String,
-    },
+    Pull { pr_number: String },
 
-    // Show details for particular PR, takes PR Number as argument
-    ShowDetails {
-        pr_number: String,
-    },
+    /// Show details for particular PR
+    ShowDetails { pr_number: String },
 
     /// Show the diff of a PR compared to main
-    ShowDiff {
-        pr_number: String,
-    },
+    ShowDiff { pr_number: String },
+
     /// Submit an approval review for a PR
     SubmitReview {
         /// Pull Request number (e.g., 42)
