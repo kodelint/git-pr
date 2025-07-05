@@ -35,6 +35,7 @@
        │                                                    │
        │ 🛡️ `git pr pull 42` – pulls the enchanted branch   │
        │ 🔍 `git pr show-diff 42` – reveals arcane changes  │
+       │ 📊 `git pr show-details 42` – inspect PR contents  │
        │ ✨ `git pr submit-review 42` – casts approval spell│
        │ 📜 `git pr list` – scrolls of pending quests       │
        └────────────────────────────────────────────────────┘
@@ -54,11 +55,12 @@
 
 ✨ Features
 
-- 📋 List open pull requests in the current repository
+- 📋 List open pull requests in the current repository (in tabular format)
 - 📥 Pull a PR into a local branch
-- 🔍 Show diffs for a PR against main
-- 📝 Submit an approval review on a pull request
-- 🐞 Verbose debug mode for transparency during GitHub API interactions
+- 🔍 Show diffs between PR and main
+- 📊 Display full PR details with commits and changed files
+- 📝 Submit a review with approval, comment-only, or rejection
+- 🐞 Debug mode for verbose API logging
 
 ## Installation
 
@@ -90,6 +92,7 @@ git-pr list
 git-pr pull <PR_NUMBER>
 git-pr show-diff <PR_NUMBER>
 git-pr submit-review <PR_NUMBER> --message "Looks great!"
+git pr show-details 5
 ```
 
 ## 🛠️ Command Reference
@@ -100,6 +103,25 @@ git-pr submit-review <PR_NUMBER> --message "Looks great!"
 | `pull <number>`   | Fetch and checkout a PR             |
 | `show-diff <num>` | Show diff between `main` and the PR |
 | `submit-review`   | Submit a review with a message      |
+| `show-details`    | Shows the details about the PR      |
+
+```bash
+git pr -help
+A Git plugin to interact with pull requests
+
+Usage: git pr <COMMAND>
+
+Commands:
+  pull           Pull and checkout a PR branch locally
+  show-details   
+  show-diff      Show the diff of a PR compared to main
+  submit-review  Submit an approval review for a PR
+  list           List all currently open pull requests for the repository
+  help           Print this message or the help of the given subcommand(s)
+
+Options:
+  -h, --help  Print help
+```
 
 ## 🐛 Debug Mode
 
@@ -119,21 +141,31 @@ You'll see helpful debug messages like:
 
 ## 🚀 Examples
 
+#### List of PRs
+
 ```bash
-# List of PRs
-
 > git pr list
-📋 Open Pull Requests:
-#1: Testing my first PR
 
-# Pull a PR locally
+╭────────┬──────────┬──────────┬───────┬───────────────┬─────────────────────────┬────────┬──────────────────────────────────╮
+│ Number │ Title    │ Author   │ Age   │ Total Commits │ Number of Changed Files │ Labels │ Description                      │
+├────────┼──────────┼──────────┼───────┼───────────────┼─────────────────────────┼────────┼──────────────────────────────────┤
+│ #5     │ Patch 1  │ github-u │ today │ 2             │ 2                       │ -      │ -                                │
+│ #4     │ Check it │ github-u │ 1d    │ 2             │ 2                       │ -      │ This is for testing purpose only │
+╰────────┴──────────┴──────────┴───────┴───────────────┴─────────────────────────┴────────┴──────────────────────────────────╯
+```
 
+#### Pull a PR locally
+
+```bash
 > git pr pull 1
 📥 Pulling PR #1...
 Switched to branch 'pr-request-1'
 ✅ Switched to branch pr-request-1
+```
 
-# Show the Diff
+#### Show the Diff
+
+```bash
 > git pr show-diff 1
 🔍 Showing diff for PR #1...
 
@@ -164,6 +196,18 @@ README.md
 ```
 
 Note: the `show-diff` is using [`delta`](https://github.com/dandavison/delta) as git's default diff viewer
+
+#### Show Details about a PR
+
+```bash
+git pr show-details 5
+╭───────────┬─────────┬────────┬───────┬──────────┬────────────┬─────────────────────────╮
+│ PR Number │ Title   │ Status │ Age   │ Authors  │ Commit SHA │ Changed Files           │
+├───────────┼─────────┼────────┼───────┼──────────┼────────────┼─────────────────────────┤
+│ #5        │ Patch 1 │ open   │ today │ github-u │ 2f72501    │ Add-file2.md, README.md │
+│           │         │        │       │          │ 205178f    │ README.md               │
+╰───────────┴─────────┴────────┴───────┴──────────┴────────────┴─────────────────────────╯
+```
 
 ## Limitations
 

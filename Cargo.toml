@@ -1,6 +1,6 @@
 [package]
 name = "git-pr"
-version = "0.1.0"
+version = "0.0.1"
 edition = "2021"
 
 [dependencies]
@@ -11,5 +11,5 @@ serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 chrono = { version = "0.4", features = ["serde"] }
 textwrap = "0.16"
-tabled = { version = "0.15.0", features = ["ansi"] }
+tabled = { version = "0.20.0", features = ["ansi"] }
 owo-colors = "4.2.2"
