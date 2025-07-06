@@ -30,7 +30,7 @@ pub trait SourceControlProvider {
     /// # Usage
     /// This method encapsulates the entire review submission flow, including authentication,
     /// sending the review comment, and handling response errors.
-    fn submit_review(
+    fn submit_pull_request_review(
         &self,
         pr_number: &str,
         message: &str,
@@ -38,12 +38,11 @@ pub trait SourceControlProvider {
     ) -> Result<(), Box<dyn Error>>;
 
     /// Displays the diff between the PR branch and `origin/main`.
-    /// Assumes PR is already fetched and checked out.
-    fn show_diff(&self, pr_number: &str);
+    fn show_pull_request_diff(&self, pr_number: &str, raw: bool) -> Result<(), Box<dyn Error>>;
 
     /// Pulls a PR locally and checks out a corresponding local branch.
     /// Behavior differs depending on whether the PR comes from the same repo or a fork.
-    fn pull_pr(&self, pr_number: &str);
+    fn get_pull_request(&self, pr_number: &str);
 
     /// Lists all open pull requests for the current repository.
     ///
