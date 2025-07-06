@@ -9,9 +9,11 @@ use reqwest::blocking::Client;
 use serde_json::json;
 use std::env;
 use std::error::Error;
-use std::process::Command;
+use std::io::Write;
+use std::process::{Command, Stdio};
 use tabled::{settings::Style, Table};
 use textwrap::{fill, Options};
+use which::which;
 
 impl GitHubProvider {
     /// Creates a new GitHubProvider instance by reading the GitHub token from the environment.
@@ -63,7 +65,7 @@ impl SourceControlProvider for GitHubProvider {
     ///
     /// The method uses GitHub's REST API and requires the head commit SHA of the PR,
     /// which must be included in the review payload.
-    fn submit_review(
+    fn submit_pull_request_review(
         &self,
         pr_number: &str, // The pull request number, as a string (e.g. "42")
         message: &str,   // The review message to be attached to the review
@@ -141,40 +143,88 @@ impl SourceControlProvider for GitHubProvider {
         }
     }
 
-    /// Displays a diff of the PR branch versus the `origin/main` branch.
+    /// Shows the GitHub Pull Request diff without requiring a local pull.
     ///
-    /// This function assumes that the pull request has already been fetched
-    /// and checked out locally using a consistent naming convention.
-    /// It constructs the branch name and diff range, runs a `git diff`,
-    /// and reports failure if the command doesn't succeed.
-    fn show_diff(&self, pr_number: &str) {
-        // Construct the expected local branch name for the PR.
-        // This assumes a naming scheme like: `pr-request-<PR_NUMBER>`
-        let branch = format!("pr-request-{}", pr_number);
+    /// If `--raw` is set, the diff is printed directly to stdout without pager.
+    /// Otherwise, tries to pipe to `delta`, or falls back to `less` or `cat`.
+    fn show_pull_request_diff(&self, pr_number: &str, raw: bool) -> Result<(), Box<dyn Error>> {
+        debug_log!("[DEBUG] Fetching diff for PR #{}", pr_number);
 
-        // Define the diff range using Git's triple-dot syntax.
-        // This compares changes from the merge base between origin/main and the PR branch.
-        let diff_range = format!("origin/main...{}", branch);
+        let (owner, repo) = self
+            .infer_repo_details()
+            .ok_or("Could not parse owner/repo")?;
 
-        // Print a debug message showing the exact diff command being run.
-        debug_log!("[DEBUG] Running: git diff {}", diff_range);
+        let pr_url = format!(
+            "https://api.github.com/repos/{}/{}/pulls/{}",
+            owner, repo, pr_number
+        );
 
-        // Execute the `git diff` command in a subprocess using std::process::Command.
-        // This will output the differences between the two branches.
-        let diff = Command::new("git")
-            .args(["diff", &diff_range])
-            .status() // This returns a `Result<ExitStatus>` indicating success or failure.
-            .expect("Failed to show diff"); // Panic if the command itself fails to launch.
+        let pr_resp = self
+            .client
+            .get(&pr_url)
+            .bearer_auth(&self.token)
+            .header("User-Agent", "git-pr")
+            .send()?;
 
-        // Log that the diff command was invoked, even if it failed.
-        debug_log!("[DEBUG] Preparing Git Diff {}", diff_range);
-
-        // Check if the `git diff` command failed based on its exit status.
-        // This can happen if the branch doesn't exist or Git errors out.
-        if !diff.success() {
-            // Print a human-readable error message if the diff fails.
-            eprintln!("{}", "❌ Failed to display diff.".red());
+        if !pr_resp.status().is_success() {
+            return Err(format!("❌ Failed to fetch PR metadata: {}", pr_resp.status()).into());
         }
+
+        let pr_json: serde_json::Value = pr_resp.json()?;
+        let diff_url = pr_json["diff_url"]
+            .as_str()
+            .ok_or("Could not extract diff_url")?;
+
+        debug_log!("[DEBUG] Found diff_url: {}", diff_url);
+
+        let diff_resp = self
+            .client
+            .get(diff_url)
+            .bearer_auth(&self.token)
+            .header("User-Agent", "git-pr")
+            .header("Accept", "application/vnd.github.v3.diff")
+            .send()?;
+
+        if !diff_resp.status().is_success() {
+            return Err(format!(
+                "❌ Failed to fetch diff from GitHub: {}",
+                diff_resp.status()
+            )
+            .into());
+        }
+
+        let diff_body = diff_resp.text()?;
+
+        if raw {
+            // Print raw diff to stdout
+            println!("{}", diff_body);
+            return Ok(());
+        }
+
+        // Try using `delta`, fallback to `less`, fallback to `cat`
+        let pager = if which("delta").is_ok() {
+            "delta"
+        } else if which("less").is_ok() {
+            "less"
+        } else {
+            "cat"
+        };
+
+        debug_log!("[DEBUG] Using pager: {}", pager);
+
+        let mut child = Command::new(pager)
+            .stdin(Stdio::piped())
+            .spawn()
+            .expect("Failed to spawn pager");
+
+        child
+            .stdin
+            .as_mut()
+            .ok_or("Failed to open stdin for pager")?
+            .write_all(diff_body.as_bytes())?;
+
+        child.wait()?;
+        Ok(())
     }
 
     /// Pulls a GitHub pull request (PR) and checks out a corresponding local branch.
@@ -214,7 +264,7 @@ impl SourceControlProvider for GitHubProvider {
     /// but cannot push directly to the fork’s branch unless you have permissions.
     ///
     /// ---
-    fn pull_pr(&self, pr_number: &str) {
+    fn get_pull_request(&self, pr_number: &str) {
         // Get the origin URL of the current Git repository (e.g., git@github.com:owner/repo.git)
         let remote_url = get_remote_url().unwrap_or_else(|| {
             eprintln!("{}", "❌ Could not determine remote URL.".red());
@@ -703,13 +753,13 @@ impl SourceControlProvider for GitHubProvider {
 
         // Debug log all extracted metadata for troubleshooting
         debug_log!(
-        "[DEBUG] PR #{}: title={}, status={}, author={}, age={}d",
-        pr_number,
-        title,
-        status,
-        user,
-        age_days
-    );
+            "[DEBUG] PR #{}: title={}, status={}, author={}, age={}d",
+            pr_number,
+            title,
+            status,
+            user,
+            age_days
+        );
 
         // Construct the GitHub API URL to fetch the list of commits on this PR
         let commits_url = format!(
