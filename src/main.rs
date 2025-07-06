@@ -33,7 +33,13 @@ enum Commands {
     ShowDetails { pr_number: String },
 
     /// Show the diff of a PR compared to main
-    ShowDiff { pr_number: String },
+    ShowDiff {
+        pr_number: String,
+
+        /// Dump the raw diff
+        #[arg(long)]
+        raw: bool,
+    },
 
     /// Submit an approval review for a PR
     SubmitReview {
@@ -108,18 +114,19 @@ fn main() {
         // Fetch and checkout to a branch for a specific PR by number
         Commands::Pull { pr_number } => {
             println!("{}", format!("📥 Pulling PR #{}...", pr_number).green());
-            provider.pull_pr(&pr_number);
+            provider.get_pull_request(&pr_number);
         }
         // Show the diff of a PR vs main
-        // keep in mind that show-diff to work
-        // present checked out branch should be the one with PR changes
-        Commands::ShowDiff { pr_number } => {
+        Commands::ShowDiff { pr_number, raw } => {
             println!(
                 "{}",
                 format!("🔍 Showing diff for PR #{}...", pr_number).green()
             );
-            provider.show_diff(&pr_number);
+            if let Err(err) = provider.show_pull_request_diff(&pr_number, raw) {
+                eprintln!("❌ Failed to show diff: {}", err);
+            }
         }
+
         // Submit a code review for the PR
         // This is the little complicated one
         // Presently it supports following:
@@ -145,7 +152,8 @@ fn main() {
                     "📝 Submitting APPROVAL review for PR #{}...",
                     pr_number.green()
                 );
-                if let Err(e) = provider.submit_review(&pr_number, &message, "APPROVE") {
+                if let Err(e) = provider.submit_pull_request_review(&pr_number, &message, "APPROVE")
+                {
                     eprintln!("{} {}", "❌ Error submitting review:".red(), e);
                     std::process::exit(1);
                 }
@@ -155,7 +163,9 @@ fn main() {
                     pr_number.red()
                 );
 
-                if let Err(e) = provider.submit_review(&pr_number, &message, "REQUEST_CHANGES") {
+                if let Err(e) =
+                    provider.submit_pull_request_review(&pr_number, &message, "REQUEST_CHANGES")
+                {
                     eprintln!("{} {}", "❌ Error submitting review:".red(), e);
                     std::process::exit(1);
                 }
@@ -171,7 +181,8 @@ fn main() {
                     "📝 Submitting COMMENT only review for PR #{}...",
                     pr_number.yellow()
                 );
-                if let Err(e) = provider.submit_review(&pr_number, &message, "COMMENT") {
+                if let Err(e) = provider.submit_pull_request_review(&pr_number, &message, "COMMENT")
+                {
                     eprintln!("{} {}", "❌ Error submitting review:".red(), e);
                     std::process::exit(1);
                 }
@@ -180,7 +191,8 @@ fn main() {
                     "📝 No review flag specified, defaulting to APPROVE for PR #{}...",
                     pr_number.green()
                 );
-                if let Err(e) = provider.submit_review(&pr_number, &message, "APPROVE") {
+                if let Err(e) = provider.submit_pull_request_review(&pr_number, &message, "APPROVE")
+                {
                     eprintln!("{} {}", "❌ Error submitting review:".red(), e);
                     std::process::exit(1);
                 }
