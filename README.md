@@ -90,22 +90,22 @@ export GITHUB_TOKEN=ghp_xxx123yourtoken
 All commands operate in the context of the GitHub repo defined by your local git remote.
 
 ```bash
-git-pr list
-git-pr pull <PR_NUMBER>
-git-pr show-diff <PR_NUMBER>
-git-pr submit-review <PR_NUMBER> --message "Looks great!"
-git pr show-details 5
+git pr list                                                 # Gets PR List
+git pr pull <PR_NUMBER>                                     # Pulls the PR locally
+git pr show-diff <PR_NUMBER>                                # Shows the PR diff
+git pr submit-review <PR_NUMBER> --message "Looks great!"   # Submits review
+git pr show-details 5                                       # Show details about the PR
 ```
 
 ## 🛠️ Command Reference
 
-| Command           | Description                         |
-|-------------------|-------------------------------------|
-| `list`            | List open pull requests             |
-| `pull <number>`   | Fetch and checkout a PR             |
-| `show-diff <num>` | Show diff between `main` and the PR |
-| `submit-review`   | Submit a review with a message      |
-| `show-details`    | Shows the details about the PR      |
+| Command                     | Description                         |
+|-----------------------------|-------------------------------------|
+| `list`                      | List open pull requests             |
+| `pull <pr_number>`          | Fetch and checkout a PR             |
+| `show-diff <pr_number>`     | Show diff between `main` and the PR |
+| `submit-review <pr_number>` | Submit a review with a message      |
+| `show-details <pr_number>`  | Shows the details about the PR      |
 
 ```bash
 git pr -help
@@ -168,26 +168,80 @@ Switched to branch 'pr-request-1'
 > Philosophy of pushing improvements or update the pull-request is simple:
 > - The PR is to same Repo
     >
+
 - The branch will be fetched, checked out and contributors with write access can push changes directly to the PR branch.
+
 > - The PR is from a forked Repo
     >
+
 - The PR is checked out locally as a new branch named `<fork-owner>-pr-<number>`, which cannot be pushed back to the
   fork. If needed, changes can be committed and pushed to a new branch in the original repo, continuing the work.
 
 #### Show the Diff
 
 ```bash
-> git pr show-diff 1
-🔍 Showing diff for PR #1...
+> git pr show-diff 7
+🔍 Showing diff for PR #7...
 
-README.md
+added: New-PR.md
 ───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
 
 ───┐
 1: │
 ───┘
-# testing-git-pr]
-## First PR to test
+## Adding README
+### Adding more to see if interactive works or not
+### It should be able to add
+
+removed: README.md
+───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+
+───┐
+0: │
+───┘
+## Adding README
+
+Testing.md
+───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+
+───┐
+1: │
+───┘
+# Testing Markdown file
+## Let's add few more lines
+```
+
+#### Show the Diff with `--raw`
+
+```bash
+git pr show-diff 7 --raw
+🔍 Showing diff for PR #7...
+diff --git a/New-PR.md b/New-PR.md
+new file mode 100644
+index 0000000..dbf6b10
+--- /dev/null
++++ b/New-PR.md
+@@ -0,0 +1,5 @@
++## Adding README
++
++### Adding more to see if interactive works or not
++
++### It should be able to add
+diff --git a/README.md b/README.md
+deleted file mode 100644
+index 89ff3ba..0000000
+--- a/README.md
++++ /dev/null
+@@ -1 +0,0 @@
+-## Adding README
+diff --git a/Testing.md b/Testing.md
+index 411c237..ae05846 100644
+--- a/Testing.md
++++ b/Testing.md
+@@ -1 +1,3 @@
+ # Testing Markdown file
++
++## Let's add few more lines
 ```
 
 #### Tried to review my own PR 😉
